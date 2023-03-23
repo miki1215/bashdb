@@ -4,22 +4,37 @@ import (
 	"bufio"
 	"database/sql"
 	"fmt"
-	_ "github.com/lib/pq"
 	"log"
 	"os"
+	"sync"
+	"time"
+
+	_ "github.com/lib/pq"
 )
 
-func parseFile(filename string) {
+func parseFile(wg *sync.WaitGroup, filename string) {
 	file, _ := os.Open(filename)
 	defer file.Close()
-
+	//ch := make(chan string)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-		fmt.Println(line)
+		go UploadDb(wg, line)
 	}
 }
 
+func measureTime(f func()) time.Duration {
+	start := time.Now()
+	f()
+	elapsed := time.Since(start)
+	return elapsed
+}
+
+func UploadDb(wg *sync.WaitGroup, line string) {
+	fmt.Println("\n------")
+	fmt.Println(line)
+	wg.Done()
+}
 func main() {
 	connStr := "postgresql://postgres:miki@localhost:5432/bash?sslmode=disable"
 
@@ -34,6 +49,7 @@ func main() {
 	//		log.Fatal(err)
 	//	}
 	// use prepared statement to insert data into table
+
 	stmt, err := db.Prepare("INSERT INTO my_table (name, id) VALUES ($1, $2)")
 	if err != nil {
 		log.Fatal(err)
@@ -43,24 +59,27 @@ func main() {
 	// execute prepared statement with values
 	stmt.Exec("jjjj", 20000)
 
+	// RECEIVING AND READING
+
 	// Execute a SELECT query and retrieve the results
 	rows, err := db.Query("SELECT * FROM my_table")
 
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	defer rows.Close()
 
-	// Print the results to the console
+	// Print the received results from the databese to the console
 	for rows.Next() {
 		var id int
 		var name string
 		var date string
 		err = rows.Scan(&id, &name, &date)
-		fmt.Printf("id: %d, name: %s\n, date:%v\n", id, name, date)
+		fmt.Printf("id: %d, name: %s, date:%v", id, name, date)
 	}
-
-	parseFile("ba")
+	wg := sync.WaitGroup{}
+	wg.Add(3)
+	parseFile(&wg, "ba")
+	wg.Wait()
 
 }

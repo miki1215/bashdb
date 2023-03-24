@@ -12,14 +12,30 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func parseFile(wg *sync.WaitGroup, filename string) {
-	file, _ := os.Open(filename)
-	defer file.Close()
+type file struct {
+	filename string
+	line     string
+	db       *dbs
+}
+
+type dbs struct {
+	db *sql.DB
+	wg *sync.WaitGroup
+}
+
+type up interface {
+	UploadDb()
+	UploadRecord()
+}
+
+func (f file) parseFile() {
+	openedfile, _ := os.Open(f.filename)
+	defer openedfile.Close()
 	//ch := make(chan string)
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(openedfile)
 	for scanner.Scan() {
-		line := scanner.Text()
-		go UploadDb(wg, line)
+		f.line = scanner.Text()
+		go f.UploadRecord()
 	}
 }
 
@@ -30,11 +46,18 @@ func measureTime(f func()) time.Duration {
 	return elapsed
 }
 
-func UploadDb(wg *sync.WaitGroup, line string) {
-	fmt.Println("\n------")
-	fmt.Println(line)
-	wg.Done()
+func (f *file) UploadRecord() {
+	stmt, err := f.db.db.Prepare("INSERT INTO my_table (name) VALUES ($1)")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmt.Close()
+
+	// execute prepared statement with values
+	stmt.Exec(f.line)
+	f.db.wg.Done()
 }
+
 func main() {
 	connStr := "postgresql://postgres:miki@localhost:5432/bash?sslmode=disable"
 
@@ -49,15 +72,6 @@ func main() {
 	//		log.Fatal(err)
 	//	}
 	// use prepared statement to insert data into table
-
-	stmt, err := db.Prepare("INSERT INTO my_table (name, id) VALUES ($1, $2)")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer stmt.Close()
-
-	// execute prepared statement with values
-	stmt.Exec("jjjj", 20000)
 
 	// RECEIVING AND READING
 
@@ -79,7 +93,8 @@ func main() {
 	}
 	wg := sync.WaitGroup{}
 	wg.Add(3)
-	parseFile(&wg, "ba")
+	file := file{filename: "ba", db: &dbs{db: db, wg: &wg}}
+	file.parseFile()
 	wg.Wait()
 
 }

@@ -12,30 +12,17 @@ import (
 	_ "github.com/lib/pq"
 )
 
-type file struct {
-	filename string
-	line     string
-	db       *dbs
-}
-
-type dbs struct {
-	db *sql.DB
-	wg *sync.WaitGroup
-}
-
-type up interface {
-	UploadDb()
-	UploadRecord()
-}
-
-func (f file) parseFile() {
-	openedfile, _ := os.Open(f.filename)
+func parseFile(filename string) {
+	openedfile, _ := os.Open(filename)
 	defer openedfile.Close()
-	//ch := make(chan string)
+	ch := make(chan string)
 	scanner := bufio.NewScanner(openedfile)
+	linennumber := 0
 	for scanner.Scan() {
-		f.line = scanner.Text()
-		go f.UploadRecord()
+		line := scanner.Text()
+		linennumber++
+		fmt.Println(linennumber, " ", line)
+		ch <- line
 	}
 }
 
@@ -92,7 +79,6 @@ func main() {
 		fmt.Printf("id: %d, name: %s, date:%v", id, name, date)
 	}
 	wg := sync.WaitGroup{}
-	wg.Add(3)
 	file := file{filename: "ba", db: &dbs{db: db, wg: &wg}}
 	file.parseFile()
 	wg.Wait()

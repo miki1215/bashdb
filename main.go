@@ -6,24 +6,37 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sync"
+	"strconv"
 	"time"
 
 	_ "github.com/lib/pq"
 )
 
-func parseFile(filename string) {
+type filename struct {
+	filename string
+}
+
+func LineCheck(filename string) int {
+	openedfile, _ := os.Open("ba")
+	defer openedfile.Close()
+	scanner := bufio.NewScanner(openedfile)
+	lines := 0
+	for scanner.Scan() {
+		lines++
+	}
+	return lines
+}
+func parseFile(filename string, ch chan string) {
 	openedfile, _ := os.Open(filename)
 	defer openedfile.Close()
-	ch := make(chan string)
 	scanner := bufio.NewScanner(openedfile)
 	linennumber := 0
 	for scanner.Scan() {
-		line := scanner.Text()
 		linennumber++
-		fmt.Println(linennumber, " ", line)
+		line := string(strconv.Itoa(linennumber) + " " + scanner.Text())
 		ch <- line
 	}
+	close(ch)
 }
 
 func measureTime(f func()) time.Duration {
@@ -33,18 +46,19 @@ func measureTime(f func()) time.Duration {
 	return elapsed
 }
 
-func (f *file) UploadRecord() {
-	stmt, err := f.db.db.Prepare("INSERT INTO my_table (name) VALUES ($1)")
-	if err != nil {
-		log.Fatal(err)
+func ReadFromChan(ch chan string) {
+	for {
+		select {
+		case line := <-ch:
+			fmt.Println(line)
+
+			time.Sleep(1 * time.Second)
+		default:
+			fmt.Println(" Not")
+			time.Sleep(1 * time.Second)
+		}
 	}
-	defer stmt.Close()
-
-	// execute prepared statement with values
-	stmt.Exec(f.line)
-	f.db.wg.Done()
 }
-
 func main() {
 	connStr := "postgresql://postgres:miki@localhost:5432/bash?sslmode=disable"
 
@@ -55,14 +69,12 @@ func main() {
 	}
 	defer db.Close()
 	//	_, err = db.Exec("ALTER TABLE my_table ADD COLUMN created_at TIMESTAMP DEFAULT NOW()")
-	//	if err != nil {
-	//		log.Fatal(err)
-	//	}
-	// use prepared statement to insert data into table
+	stmt, err := db.Prepare("INSERT INTO my_table (name) VALUES ($1)")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmt.Close()
 
-	// RECEIVING AND READING
-
-	// Execute a SELECT query and retrieve the results
 	rows, err := db.Query("SELECT * FROM my_table")
 
 	if err != nil {
@@ -71,16 +83,16 @@ func main() {
 	defer rows.Close()
 
 	// Print the received results from the databese to the console
-	for rows.Next() {
-		var id int
-		var name string
-		var date string
-		err = rows.Scan(&id, &name, &date)
-		fmt.Printf("id: %d, name: %s, date:%v", id, name, date)
-	}
-	wg := sync.WaitGroup{}
-	file := file{filename: "ba", db: &dbs{db: db, wg: &wg}}
-	file.parseFile()
-	wg.Wait()
-
+	//	for rows.Next() {
+	//		var id int
+	//		var name string
+	//		var date string
+	//		err = rows.Scan(&id, &name, &date)
+	//		fmt.Printf("id: %d, name: %s, date:%v", id, name, date)
+	//	}
+	//
+	lines := LineCheck("ba")
+	ch := make(chan string, lines)
+	go parseFile("ba", ch)
+	ReadFromChan(ch)
 }

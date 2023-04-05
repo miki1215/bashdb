@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -27,13 +26,16 @@ func LineCheck(filename string) int {
 	return lines
 }
 func parseFile(filename string, ch chan string) {
-	openedfile, _ := os.Open(filename)
+	openedfile, err := os.Open(filename)
+	if err != nil {
+		log.Panic("Non-existent file")
+	}
 	defer openedfile.Close()
 	scanner := bufio.NewScanner(openedfile)
 	linennumber := 0
 	for scanner.Scan() {
 		linennumber++
-		line := string(strconv.Itoa(linennumber) + " " + scanner.Text())
+		line := string(scanner.Text())
 		ch <- line
 	}
 	close(ch)
@@ -47,19 +49,34 @@ func measureTime(f func()) time.Duration {
 }
 
 func ReadFromChan(ch chan string) {
+elso:
 	for {
-		select {
-		case line := <-ch:
-			fmt.Println(line)
 
-			time.Sleep(1 * time.Second)
+		select {
+		case line, ok := <-ch:
+			if !ok {
+				fmt.Println("channel closed, breaking...")
+				break elso
+			}
+			//	fmt.Println(line)
+			Upload(line)
 		default:
 			fmt.Println(" Not")
-			time.Sleep(1 * time.Second)
 		}
 	}
 }
-func main() {
+func GetFileName() []string {
+	filename := os.Args
+
+	if len(filename) > 1 {
+		arg := filename[1]
+		fmt.Println("Filename:", arg)
+	} else {
+		fmt.Println("No argument provided")
+	}
+	return filename
+}
+func Upload(name string) {
 	connStr := "postgresql://postgres:miki@localhost:5432/bash?sslmode=disable"
 
 	// Connect to database
@@ -68,20 +85,16 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
-	//	_, err = db.Exec("ALTER TABLE my_table ADD COLUMN created_at TIMESTAMP DEFAULT NOW()")
 	stmt, err := db.Prepare("INSERT INTO my_table (name) VALUES ($1)")
 	if err != nil {
 		log.Fatal(err)
 	}
+	stmt.Exec(name)
 	defer stmt.Close()
 
-	rows, err := db.Query("SELECT * FROM my_table")
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer rows.Close()
-
+}
+func main() {
+	//	_, err = db.Exec("ALTER TABLE my_table ADD COLUMN created_at TIMESTAMP DEFAULT NOW()")
 	// Print the received results from the databese to the console
 	//	for rows.Next() {
 	//		var id int
@@ -91,8 +104,9 @@ func main() {
 	//		fmt.Printf("id: %d, name: %s, date:%v", id, name, date)
 	//	}
 	//
-	lines := LineCheck("ba")
+	filename := GetFileName()
+	lines := LineCheck(filename[1])
 	ch := make(chan string, lines)
-	go parseFile("ba", ch)
+	parseFile(filename[1], ch)
 	ReadFromChan(ch)
 }

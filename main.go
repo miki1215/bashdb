@@ -48,7 +48,7 @@ func measureTime(f func()) time.Duration {
 	return elapsed
 }
 
-func ReadFromChan(ch chan string) {
+func ReadFromChan(ch chan string, db *sql.DB) {
 elso:
 	for {
 
@@ -59,7 +59,7 @@ elso:
 				break elso
 			}
 			//	fmt.Println(line)
-			Upload(line)
+			Upload(line, db)
 		default:
 			fmt.Println(" Not")
 		}
@@ -76,7 +76,17 @@ func GetFileName() []string {
 	}
 	return filename
 }
-func Upload(name string) {
+func Upload(name string, db *sql.DB) {
+	stmt, err := db.Prepare("INSERT INTO my_table (name) VALUES ($1)")
+	if err != nil {
+		log.Fatal(err)
+	}
+	stmt.Exec(name)
+	defer stmt.Close()
+
+}
+
+func OpenDb() *sql.DB {
 	connStr := "postgresql://postgres:miki@localhost:5432/bash?sslmode=disable"
 
 	// Connect to database
@@ -84,13 +94,27 @@ func Upload(name string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
-	stmt, err := db.Prepare("INSERT INTO my_table (name) VALUES ($1)")
+	//defer db.Close()
+	GetQuery(db)
+	return db
+}
+
+func GetQuery(db *sql.DB) {
+	rows, err := db.Query("SELECT * FROM my_table")
+
 	if err != nil {
 		log.Fatal(err)
 	}
-	stmt.Exec(name)
-	defer stmt.Close()
+	defer rows.Close()
+
+	// Print the received results from the databese to the console
+	for rows.Next() {
+		var id int
+		var name string
+		var date string
+		err = rows.Scan(&id, &name, &date)
+		fmt.Printf("id: %d, name: %s, date:%v", id, name, date)
+	}
 
 }
 func main() {
@@ -104,9 +128,12 @@ func main() {
 	//		fmt.Printf("id: %d, name: %s, date:%v", id, name, date)
 	//	}
 	//
+
+	// Execute a SELECT query and retrieve the results
+	db := OpenDb()
 	filename := GetFileName()
 	lines := LineCheck(filename[1])
 	ch := make(chan string, lines)
 	parseFile(filename[1], ch)
-	ReadFromChan(ch)
+	ReadFromChan(ch, db)
 }
